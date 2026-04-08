@@ -140,3 +140,5 @@ PASS tb_cpu_smoke
 ```
 
 Both Spike and the RTL implementation produce the same expected architectural result for the smoke test.
+
+### Next Steps -> Putting RTL onto FPGA -> UART stuff -> Demo Programs
