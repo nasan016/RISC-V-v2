@@ -142,3 +142,46 @@ PASS tb_cpu_smoke
 Both Spike and the RTL implementation produce the same expected architectural result for the smoke test.
 
 ### Next Steps -> Putting RTL onto FPGA -> UART stuff -> Demo Programs
+
+## Basys3 UART Monitor
+
+The Basys3 top now instantiates the CPU with a memory-mapped UART monitor program:
+
+```text
+UART TX data   0x1000_0000  write low byte
+UART RX data   0x1000_0004  read low byte, consumes the pending byte
+UART status    0x1000_0008  bit 0 = RX valid, bit 1 = TX ready
+```
+
+Build the monitor ROM:
+
+```bash
+cd chipchat_rv32i
+chmod +x tools/build_uart_shell.sh
+./tools/build_uart_shell.sh
+```
+
+Program the Basys3, then connect over USB serial at `115200 8N1`, for example:
+
+```bash
+picocom -b 115200 /dev/ttyUSB0
+```
+
+Supported commands:
+
+```text
+hello <name>
+./fact <n>
+./fib <n>
+```
+
+Examples:
+
+```text
+rv32> hello ada
+hello ada!
+rv32> ./fact 5
+120
+rv32> ./fib 10
+55
+```

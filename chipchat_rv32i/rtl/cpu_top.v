@@ -3,11 +3,18 @@ module cpu_top #(
 )(
     input clk,
     input rst_n,
+    input      [7:0] uart_rx_data,
+    input            uart_rx_valid,
+    output           uart_rx_consume,
+    output     [7:0] uart_tx_data,
+    output           uart_tx_start,
+    input            uart_tx_busy,
     output reg halted,
     output reg [31:0] tohost
 );
 
     localparam [31:0] TOHOST_ADDR = 32'h0000_0100;
+    localparam [31:0] UART_BASE   = 32'h1000_0000;
 
     localparam MEM_BYTE = 2'd0;
     localparam MEM_HALF = 2'd1;
@@ -96,8 +103,18 @@ module cpu_top #(
     );
 
     wire [31:0] dmem_rdata;
+    wire uart_hit       = (alu_y[31:4] == UART_BASE[31:4]);
+    wire uart_tx_hit    = uart_hit && (alu_y[3:0] == 4'h0);
+    wire uart_rx_hit    = uart_hit && (alu_y[3:0] == 4'h4);
+    wire uart_stat_hit  = uart_hit && (alu_y[3:0] == 4'h8);
+    wire uart_tx_ready  = !(uart_tx_busy === 1'b1);
+    wire uart_rx_ready  = (uart_rx_valid === 1'b1);
     wire tohost_hit     = mem_we && (alu_y == TOHOST_ADDR);
-    wire dmem_we_actual = mem_we & ~halted & ~tohost_hit;
+    wire dmem_we_actual = mem_we & ~halted & ~tohost_hit & ~uart_hit;
+
+    assign uart_tx_data    = rs2_val[7:0];
+    assign uart_tx_start   = mem_we & ~halted & uart_tx_hit & uart_tx_ready;
+    assign uart_rx_consume = mem_re & ~halted & uart_rx_hit & uart_rx_ready;
 
     dmem dm (
         .clk(clk),
@@ -108,14 +125,21 @@ module cpu_top #(
         .rdata(dmem_rdata)
     );
 
+    wire [31:0] uart_rdata =
+        uart_rx_hit   ? {24'b0, uart_rx_data} :
+        uart_stat_hit ? {30'b0, uart_tx_ready, uart_rx_ready} :
+                        32'b0;
+
+    wire [31:0] mem_rdata = uart_hit ? uart_rdata : dmem_rdata;
+
     wire [7:0] load_byte =
-        (alu_y[1:0] == 2'd0) ? dmem_rdata[7:0]   :
-        (alu_y[1:0] == 2'd1) ? dmem_rdata[15:8]  :
-        (alu_y[1:0] == 2'd2) ? dmem_rdata[23:16] :
-                               dmem_rdata[31:24];
+        (alu_y[1:0] == 2'd0) ? mem_rdata[7:0]   :
+        (alu_y[1:0] == 2'd1) ? mem_rdata[15:8]  :
+        (alu_y[1:0] == 2'd2) ? mem_rdata[23:16] :
+                               mem_rdata[31:24];
 
     wire [15:0] load_half =
-        alu_y[1] ? dmem_rdata[31:16] : dmem_rdata[15:0];
+        alu_y[1] ? mem_rdata[31:16] : mem_rdata[15:0];
 
     reg [31:0] load_data_ext;
     always @(*) begin
@@ -126,9 +150,9 @@ module cpu_top #(
             MEM_HALF: load_data_ext =
                 load_unsigned ? {16'b0, load_half} : {{16{load_half[15]}}, load_half};
 
-            MEM_WORD: load_data_ext = dmem_rdata;
+            MEM_WORD: load_data_ext = mem_rdata;
 
-            default:  load_data_ext = dmem_rdata;
+            default:  load_data_ext = mem_rdata;
         endcase
     end
 

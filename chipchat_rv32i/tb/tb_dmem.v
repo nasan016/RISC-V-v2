@@ -1,11 +1,12 @@
 module tb_dmem;
   reg clk;
   reg we;
+  reg [1:0] mem_size;
   reg [31:0] addr;
   reg [31:0] wdata;
   wire [31:0] rdata;
 
-  dmem dut(.clk(clk), .we(we), .addr(addr), .wdata(wdata), .rdata(rdata));
+  dmem dut(.clk(clk), .we(we), .mem_size(mem_size), .addr(addr), .wdata(wdata), .rdata(rdata));
 
   initial clk = 0;
   always #1 clk = ~clk;
@@ -29,7 +30,7 @@ module tb_dmem;
 
   initial begin
     $display("Starting DMEM Tests...");
-    we = 0; addr = 0; wdata = 0;
+    we = 0; mem_size = 2'd2; addr = 0; wdata = 0;
     #2;
 
     // Write word0 @0x0

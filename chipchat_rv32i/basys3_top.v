@@ -1,46 +1,14 @@
 module basys3_top (
     input  wire        clk,     // 100 MHz Basys3 clock
     input  wire        btnC,    // center button = reset
-    input  wire [15:0] sw,      // optional: use switches to choose clock speed
-    output wire [15:0] led,     // LEDs show halted + tohost
+    input  wire        RsRx,    // USB UART receive into FPGA
+    output wire        RsTx,    // USB UART transmit from FPGA
+    input  wire [15:0] sw,      // switches are mirrored onto LEDs for debug
+    output wire [15:0] led,     // LEDs show UART/CPU debug state
     output wire [6:0]  seg,     // 7-seg off
     output wire [3:0]  an,      // 7-seg off
     output wire        dp       // 7-seg off
 );
-
-    // ------------------------------------------------------------
-    // Clock divider
-    // ------------------------------------------------------------
-    reg [31:0] div = 32'd0;
-
-    always @(posedge clk) begin
-        div <= div + 32'd1;
-    end
-
-    // Choose CPU speed with switches:
-    // sw[2:0] = 000 -> div[20]
-    // sw[2:0] = 001 -> div[21]
-    // sw[2:0] = 010 -> div[22]
-    // sw[2:0] = 011 -> div[23]
-    // sw[2:0] = 100 -> div[24]
-    // sw[2:0] = 101 -> div[25]
-    // sw[2:0] = 110 -> div[26]
-    // sw[2:0] = 111 -> div[27]
-    reg cpu_clk;
-
-    always @(*) begin
-        case (sw[2:0])
-            3'b000: cpu_clk = div[20];
-            3'b001: cpu_clk = div[21];
-            3'b010: cpu_clk = div[22];
-            3'b011: cpu_clk = div[23];
-            3'b100: cpu_clk = div[24];
-            3'b101: cpu_clk = div[25];
-            3'b110: cpu_clk = div[26];
-            3'b111: cpu_clk = div[27];
-            default: cpu_clk = div[24];
-        endcase
-    end
 
     // ------------------------------------------------------------
     // Reset
@@ -54,24 +22,62 @@ module basys3_top (
     // ------------------------------------------------------------
     wire        halted;
     wire [31:0] tohost;
+    wire [7:0]  uart_rx_data;
+    wire        uart_rx_valid;
+    wire        uart_rx_consume;
+    wire [7:0]  uart_tx_data;
+    wire        uart_tx_start;
+    wire        uart_tx_busy;
 
-    cpu_top dut (
-        .clk    (cpu_clk),
-        .rst_n  (rst_n),
-        .halted (halted),
-        .tohost (tohost)
+    uart_rx #(
+        .CLKS_PER_BIT(868)
+    ) uart_rx0 (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .rx      (RsRx),
+        .consume (uart_rx_consume),
+        .data    (uart_rx_data),
+        .valid   (uart_rx_valid)
+    );
+
+    uart_tx #(
+        .CLKS_PER_BIT(868)
+    ) uart_tx0 (
+        .clk   (clk),
+        .rst_n (rst_n),
+        .data  (uart_tx_data),
+        .start (uart_tx_start),
+        .tx    (RsTx),
+        .busy  (uart_tx_busy)
+    );
+
+    cpu_top #(
+        .HEX_FILE("tests/uart_shell.hex")
+    ) dut (
+        .clk             (clk),
+        .rst_n           (rst_n),
+        .uart_rx_data    (uart_rx_data),
+        .uart_rx_valid   (uart_rx_valid),
+        .uart_rx_consume (uart_rx_consume),
+        .uart_tx_data    (uart_tx_data),
+        .uart_tx_start   (uart_tx_start),
+        .uart_tx_busy    (uart_tx_busy),
+        .halted          (halted),
+        .tohost          (tohost)
     );
 
     // ------------------------------------------------------------
     // LEDs
     // led[15]   = halted
-    // led[14:0] = low 15 bits of tohost
-    //
-    // For your smoke test, expected final tohost = 12
-    // so when halted goes high, LEDs should show that value.
+    // led[14]   = RX byte waiting
+    // led[13]   = TX ready
+    // led[12:8] = sw[4:0]
+    // led[7:0]  = low byte of tohost
     // ------------------------------------------------------------
     assign led[15]   = halted;
-    assign led[14:0] = tohost[14:0];
+    assign led[14]   = uart_rx_valid;
+    assign led[13]   = ~uart_tx_busy;
+    assign led[12:0] = {sw[4:0], tohost[7:0]};
 
     // ------------------------------------------------------------
     // Turn off 7-segment display

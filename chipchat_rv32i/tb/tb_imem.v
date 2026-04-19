@@ -2,7 +2,7 @@ module tb_imem;
   reg  [31:0] addr;
   wire [31:0] instr;
 
-  imem dut(.addr(addr), .instr(instr));
+  imem #(.HEX_FILE("tests/prog_imem_unit.hex")) dut(.addr(addr), .instr(instr));
 
   initial begin
     // preload with known pattern (we'll do it via initial block in imem for now)
